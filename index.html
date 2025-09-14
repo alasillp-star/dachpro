@@ -62,7 +62,7 @@ async function loadData(filter='today', customDate=null) {
   try {
     const res = await fetch(scriptURL);
     const data = await res.json();
-    const orders = data.commandes;
+    const orders = data.Commandes || []; // حسب اسم الورقة في Google Sheet
 
     const now = new Date();
     let filteredOrders = orders.filter(o => {
@@ -80,71 +80,53 @@ async function loadData(filter='today', customDate=null) {
       if(filter==='year') return orderDate.getFullYear() === now.getFullYear();
     });
 
-    // ملخص الطلبات
     document.getElementById('createdCount').textContent = filteredOrders.length;
-    document.getElementById('confirmedCount').textContent = filteredOrders.filter(o=>o['حالة التأكيد']==='تم التأكيد').length;
-    document.getElementById('deliveredCount').textContent = filteredOrders.filter(o=>o['حالة الطلبية']==='قيد التوصيل').length;
+    document.getElementById('confirmedCount').textContent = filteredOrders.filter(o=>o.Confirmatrice==='Oui').length;
+    document.getElementById('deliveredCount').textContent = filteredOrders.filter(o=>o['حالة الطلبية']==='تم التسليم').length;
 
-    // حساب الفلوس المستلمة
     const money = filteredOrders
-      .filter(o=>o['حالة الطلبية']==='قيد التوصيل' || o['حالة التأكيد']==='تم التأكيد')
-      .reduce((sum,o)=>sum + parseFloat(o['سعر المنتجوصف المنتج'] || 0),0);
+      .filter(o=>o['حالة الطلبية']==='تم التسليم' || o.Confirmatrice==='Oui')
+      .reduce((sum,o)=>sum + parseFloat(o['سعر المنتج'] || 0),0);
     document.getElementById('totalMoney').textContent = money.toFixed(3);
 
-    // أفضل المنتجات
     const productCounts = {};
     filteredOrders.forEach(o => {
       const prod = o['إسم المنتج'];
       if(!productCounts[prod]) productCounts[prod]={confirmed:0,total:0};
       productCounts[prod].total++;
-      if(o['حالة التأكيد']==='تم التأكيد') productCounts[prod].confirmed++;
+      if(o.Confirmatrice==='Oui') productCounts[prod].confirmed++;
     });
 
     const productLabels = Object.keys(productCounts);
     const confirmedData = productLabels.map(p=>productCounts[p].confirmed);
     const deliveryData = productLabels.map(p=>Math.round(productCounts[p].confirmed/productCounts[p].total*100));
 
-    // تدمير أي رسوم سابقة
     if(productChartInstance) productChartInstance.destroy();
-    if(deliveryChartInstance) deliveryChartInstance.destroy();
-
-    // رسم أفضل المنتجات
     productChartInstance = new Chart(document.getElementById('productChart').getContext('2d'),{
       type:'bar',
-      data:{
-        labels:productLabels,
-        datasets:[{label:'Confirmed Orders', data:confirmedData, backgroundColor:'rgba(54, 162, 235, 0.6)'}]
-      },
+      data:{ labels:productLabels, datasets:[{label:'Confirmed Orders', data:confirmedData, backgroundColor:'rgba(54, 162, 235, 0.6)'}] },
       options:{responsive:true, plugins:{legend:{display:false}}}
     });
 
-    // رسم نسبة التسليم
+    if(deliveryChartInstance) deliveryChartInstance.destroy();
     deliveryChartInstance = new Chart(document.getElementById('deliveryChart').getContext('2d'),{
       type:'pie',
-      data:{
-        labels:productLabels,
-        datasets:[{label:'Delivery %', data:deliveryData, backgroundColor:productLabels.map(()=>`rgba(${Math.floor(Math.random()*255)},${Math.floor(Math.random()*255)},${Math.floor(Math.random()*255)},0.6)`)}]
-      },
+      data:{ labels:productLabels, datasets:[{label:'Delivery %', data:deliveryData, backgroundColor:productLabels.map(()=>`rgba(${Math.floor(Math.random()*255)},${Math.floor(Math.random()*255)},${Math.floor(Math.random()*255)},0.6)`)}] },
       options:{responsive:true}
     });
 
-    // أفضل المنتجات المؤكدة
     const bestConfirmed = document.getElementById('bestConfirmed');
     bestConfirmed.innerHTML = '';
-    const sortedConfirmed = Object.entries(productCounts)
-      .sort((a,b)=>b[1].confirmed - a[1].confirmed)
-      .slice(0,5);
+    const sortedConfirmed = Object.entries(productCounts).sort((a,b)=>b[1].confirmed - a[1].confirmed).slice(0,5);
     sortedConfirmed.forEach(([prod,data])=>{
       bestConfirmed.innerHTML += `<li>${prod} - ${data.confirmed} مؤكد</li>`;
     });
 
   } catch(err){
     alert('خطأ في جلب البيانات: ' + err);
-    console.error(err);
   }
 }
 
-// تغيير الفلتر أو اختيار يوم محدد
 document.getElementById('filterSelect').addEventListener('change', e=>{
   document.getElementById('customDate').value = '';
   loadData(e.target.value);
@@ -154,7 +136,6 @@ document.getElementById('customDate').addEventListener('change', e=>{
   loadData('custom', e.target.value);
 });
 
-// تحميل البيانات مبدئيًا
 loadData();
 </script>
 
